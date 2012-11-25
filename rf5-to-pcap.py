@@ -57,24 +57,26 @@ if __name__ == '__main__':
 
     import argparse
     
-    parser = argparse.ArgumentParser(description='rf5-to-pcap')
-    parser.add_argument()
-    if len(sys.argv) <> 3:
-        print 'usage: ./rf5-to-pcap.py <source.rf5> <target.pcap>'
-        sys.exit()
+    parser = argparse.ArgumentParser(description='convert rf5 files to pcap')
+    parser.add_argument('--filter', action='store', help='wireshark filter')
+    parser.add_argument('--layer', action='store', 
+                        help='link-layer header type, http://www.tcpdump.org/linktypes.html')
+    parser.add_argument('source', action='store', help='rf5 file')
+    parser.add_argument('target', action='store', help='pcap file')
+    args = parser.parse_args()
     
-    source = sys.argv[1]
-    target = sys.argv[2]
-        
-    tshark_process = subprocess.Popen(
-                        ['tshark', '-x', '-r', source], 
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT)    
+    # tshark
+    tshark_args = ['tshark', '-x', '-r', args.source]
+    if args.filter:
+        tshark_args.append(args.filter)
+    tshark_process = subprocess.Popen(tshark_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)    
 
-    text2pcap_process = subprocess.Popen(
-                        ['text2pcap', '-l', '107', '-', target], 
-                        stdin=subprocess.PIPE,
-                        stderr=subprocess.PIPE)    
+    # text2pcap
+    text2pcap_args = ['text2pcap',]
+    if args.layer:
+        text2pcap_args.extend(['-l', args.layer])
+    text2pcap_args.extend(['-', args.target])
+    text2pcap_process = subprocess.Popen(text2pcap_args, stdin=subprocess.PIPE, stderr=subprocess.PIPE)    
     try:
         convert(tshark_process, text2pcap_process)
     except KeyboardInterrupt:
