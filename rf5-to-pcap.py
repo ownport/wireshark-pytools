@@ -2,7 +2,7 @@
 #
 #   rf5 to pcap
 #
-__author__ = 'Andrey Usov <https://github.com/ownport/m3ua-unbundle>'
+__author__ = 'Andrey Usov <https://github.com/ownport/wireshark-pytools>'
 __version__ = '0.1'
 __license__ = """
 Redistribution and use in source and binary forms, with or without modification,
