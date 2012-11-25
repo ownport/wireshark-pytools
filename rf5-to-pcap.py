@@ -2,9 +2,6 @@
 #
 #   rf5 to pcap
 #
-#   Example how to convert data from rf5 format to pcap (Gb interface, FrameRelay)
-#   tshark -x -r <source.rf5> | ./rf5-to-pcap.py  | text2pcap -l 107 -t "%H:%M:%S." - <result.pcap>
-# 
 __author__ = 'Andrey Usov <https://github.com/ownport/m3ua-unbundle>'
 __version__ = '0.1'
 __license__ = """
@@ -37,21 +34,21 @@ def convert(tshark_process, text2pcap_process):
     ''' convert handler from rf5 to pcap '''
     
     while tshark_process.poll() is None:
-        line = tshark_process.stdout.readline()
-        if not line:
+        tshark_line = tshark_process.stdout.readline()
+        if not tshark_line:
             break
-        if line[-1] == '\n':
-            line = line[:-1] 
-        header = re.findall(r'^\s*(\d+)\s+(\d+\.\d+).+', line)        
+        if tshark_line[-1] == '\n':
+            tshark_line = tshark_line[:-1] 
+        header = re.findall(r'^\s*(\d+)\s+(\d+\.\d+).+', tshark_line)        
         if header:
             secs, msecs = map(int, header[0][1].split('.'))
             hours = secs / 3600
             mins = (secs - hours * 3600) / 60
             secs = (secs - hours * 3600 - mins * 60)
             text2pcap_process.stdin.write("%02d:%02d:%02d.%06d\n" % (hours, mins, secs, msecs))
-            line = tshark_process.stdout.readline()
+            tshark_line = tshark_process.stdout.readline()
         else:
-            text2pcap_process.stdin.write('{}\n'.format(line))
+            text2pcap_process.stdin.write('{}\n'.format(tshark_line))
 
 if __name__ == '__main__':
 
@@ -69,14 +66,21 @@ if __name__ == '__main__':
     tshark_args = ['tshark', '-x', '-r', args.source]
     if args.filter:
         tshark_args.append(args.filter)
-    tshark_process = subprocess.Popen(tshark_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)    
+    tshark_process = subprocess.Popen(  tshark_args, 
+                                        stdout=subprocess.PIPE, 
+                                        stderr=subprocess.STDOUT)    
 
     # text2pcap
     text2pcap_args = ['text2pcap',]
     if args.layer:
         text2pcap_args.extend(['-l', args.layer])
     text2pcap_args.extend(['-', args.target])
-    text2pcap_process = subprocess.Popen(text2pcap_args, stdin=subprocess.PIPE, stderr=subprocess.PIPE)    
+    text2pcap_process = subprocess.Popen(text2pcap_args, 
+                                        stdin=subprocess.PIPE, 
+                                        stdout=subprocess.PIPE, 
+                                        stderr=subprocess.PIPE)    
+    
+    # rf5 -> pcap
     try:
         convert(tshark_process, text2pcap_process)
     except KeyboardInterrupt:
