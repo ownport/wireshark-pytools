@@ -2,10 +2,8 @@
 #
 #   M3UA unbundle
 #   
-#   tshark -x -r <source.pcap> | python m3ua-unbundle.py  | text2pcap -l141 -t "%H:%M:%S." - <result.pcap>
-# 
-__author__ = 'Andrey Usov <https://github.com/ownport/m3ua-unbundle>'
-__version__ = '0.1.1'
+__author__ = 'Andrey Usov <https://github.com/ownport/wireshark-pytools>'
+__version__ = '0.2'
 __license__ = """
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
@@ -61,22 +59,26 @@ def remove_extra(chunk):
     fields = chunk.split(' ')[2:18]
     return ' '.join(fields)
 
-def handle_packet(current_time, data):
+def handle_packet(text2pcap_process, current_time, data):
     ''' handle packet '''
     data = data.split(' ')
     
-    (ethernet_header, data)   = extract_ethernet(data)
+    (ethernet_header, data) = extract_ethernet(data)
     if ethernet_header['ip.type'] <> ['08', '00']:
         # raise RuntimeError('Unknown IP type: %s' % ethernet_header['ip.type'])
-        return data
+        # return data
+        return 
     
-    (ipv4_header, data)       = extract_ipv4(data)
+    (ipv4_header, data) = extract_ipv4(data)
     if ipv4_header['protocol'] <> PROTOCOLS['SCTP']:
         # raise RuntimeError('Unknown protocol: %s' % ipv4_header['protocol'])
-        return data
+        # return data
+        return 
         
-    (sctp_data, data)       = extract_sctp(current_time, data)
-    return data
+    # (sctp_data, data) = extract_sctp(data)
+    # return data
+    extract_sctp(text2pcap_process, current_time, data)
+    return
 
 def extract_ethernet(data):
     ''' extract ethernet header data '''
@@ -102,7 +104,7 @@ def extract_ipv4(data):
     header['protocol'] = int(data[9], 16)
     return (header, data[header['length']:])
 
-def extract_sctp(current_time, data):
+def extract_sctp(text2pcap_process, current_time, data):
     ''' extact sctp header data '''
     
     header = dict()
@@ -131,12 +133,13 @@ def extract_sctp(current_time, data):
                     payload = mtp3_hdr + payload[:-m3ua_hdr['protocol.padding']]
                 else:
                     payload = mtp3_hdr + payload
-                print_data(current_time, payload)
+                # return header, payload
+                save_data(text2pcap_process, current_time, payload)
             else:
                 if sctp_chunk['length'] % 4 <> 0:
                     chunk_padding = 4 - sctp_chunk['length'] % 4
                     data = data[chunk_padding:]
-    return (header, data)
+    return header, data
 
 def extract_sctp_chunk(data):
     ''' extract sctp chunk data '''
@@ -217,38 +220,44 @@ def m3ua_to_mtp3(m3ua_header):
         return None
     return mtp3_header
 
-def print_data(current_time, data):
-    ''' print data block '''
+def save_data(process, current_time, data):
+    ''' save data block to process '''
 
-    print '%s' % current_time
+    process.stdin.write('%s\n' % current_time)  
     row_id = 0
     while True:
         if row_id >= len(data):
             break
-        print '%04X' % row_id, ' '.join(data[row_id:row_id+16])
+        process.stdin.write('%04X %s\n' % (row_id, ' '.join(data[row_id:row_id+16])))
         row_id += 16
-    print
+    process.stdin.write('\n')
 
-if __name__ == '__main__':
-
+def unbundling(tshark_process, text2pcap_process):
+    ''' m3ua unbundling process '''
+    
     current_time = '00:00:00.0000'
     data_block = list()
-    while True:
-        line = sys.stdin.readline()
-        if not line:
+       
+    while tshark_process.poll() is None:
+
+        tshark_line = tshark_process.stdout.readline()
+        if not tshark_line:
             break
-        if line[-1] == '\n':
-            line = line[:-1]
+        if tshark_line[-1] == '\n':
+            tshark_line = tshark_line[:-1] 
                 
-        if line:
-            data_block.append(line)
+        if tshark_line:
+            data_block.append(tshark_line)
         else:
             if len(data_block) > 1:
                 filtered_block = ''
                 for chunk in data_block:
                     filtered_block += ' ' + remove_extra(chunk)
                     filtered_block = filtered_block.strip()
-                handle_packet(current_time, filtered_block)
+                #payload = handle_packet(filtered_block)
+                #if payload:
+                #    save_data(text2pcap_process, current_time, payload)
+                handle_packet(text2pcap_process, current_time, filtered_block)
             else:
                 try:
                     curr_time_str = ' '.join(data_block).strip()
@@ -261,4 +270,33 @@ if __name__ == '__main__':
                 except:
                     pass
             data_block = list()
+    
+if __name__ == '__main__':
+
+    import argparse
+    import subprocess
+    
+    parser = argparse.ArgumentParser(description='m3ua unbundle')
+    parser.add_argument('--filter', action='store', help='wireshark filter')
+    parser.add_argument('source', action='store', help='source pcap file')
+    parser.add_argument('result', action='store', help='result pcap file')
+    args = parser.parse_args()
+    
+    # tshark
+    tshark_args = ['tshark', '-x', '-r', args.source]
+    if args.filter:
+        tshark_args.append(args.filter)
+    tshark_process = subprocess.Popen(  tshark_args, 
+                                        stdout=subprocess.PIPE)    
+
+    # text2pcap
+    text2pcap_args = ['text2pcap', '-l141', '-t', '%H:%M:%S.', '-', args.result]
+    text2pcap_process = subprocess.Popen(text2pcap_args, 
+                                        stdin=subprocess.PIPE)    
+    
+    try:
+        unbundling(tshark_process, text2pcap_process)
+    except KeyboardInterrupt:
+        print 'Interrupted by user'
+        sys.exit()
 
