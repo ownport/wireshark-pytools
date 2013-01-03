@@ -3,7 +3,7 @@
 #   M3UA unbundle
 #   
 __author__ = 'Andrey Usov <https://github.com/ownport/wireshark-pytools>'
-__version__ = '0.2'
+__version__ = '0.2.1'
 __license__ = """
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
@@ -119,6 +119,8 @@ def extract_sctp(text2pcap_process, current_time, data):
             break
         (sctp_chunk, data) = extract_sctp_chunk(data)
         if sctp_chunk['type'] == SCTP_CHUNK_TYPES['DATA']:
+            if sctp_chunk['length'] == 0:
+                break
             # protocol payload identifier
             payload_identifier = int(''.join(sctp_chunk['data'][12:16]), 16)
             if payload_identifier == 3: # M3UA
