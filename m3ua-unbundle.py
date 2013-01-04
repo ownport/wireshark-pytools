@@ -247,6 +247,8 @@ def unbundling(tshark_process, text2pcap_process):
             break
         if tshark_line[-1] == '\n':
             tshark_line = tshark_line[:-1] 
+        if tshark_line[-1] == '\r':
+            tshark_line = tshark_line[:-1] 
                 
         if tshark_line:
             data_block.append(tshark_line)
