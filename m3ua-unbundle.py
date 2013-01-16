@@ -3,7 +3,7 @@
 #   M3UA unbundle
 #   
 __author__ = 'Andrey Usov <https://github.com/ownport/wireshark-pytools>'
-__version__ = '0.2.1'
+__version__ = '0.2.2'
 __license__ = """
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
@@ -246,9 +246,11 @@ def unbundling(tshark_process, text2pcap_process):
         if not tshark_line:
             break
         if tshark_line[-1] == '\n':
-            tshark_line = tshark_line[:-1] 
-        if tshark_line[-1] == '\r':
-            tshark_line = tshark_line[:-1] 
+            tshark_line = tshark_line[:-1]
+        
+        # windows platforms     
+        if tshark_line and tshark_line[-1] == '\r':
+            tshark_line = tshark_line[:-1]
                 
         if tshark_line:
             data_block.append(tshark_line)
