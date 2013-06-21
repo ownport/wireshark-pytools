@@ -3,7 +3,7 @@
 #   M3UA unbundle
 #   
 __author__ = 'Andrey Usov <https://github.com/ownport/wireshark-pytools>'
-__version__ = '0.2.2'
+__version__ = '0.2.3'
 __license__ = """
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
