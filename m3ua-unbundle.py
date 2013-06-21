@@ -148,6 +148,9 @@ def extract_sctp_chunk(data):
     header = dict()
     header['type'] = int(data[0], 16)
     header['flags'] = data[1]
+    if len(data) < 4:
+        header['length'] = 0
+        return (header, None)
     header['length'] = int(''.join(data[2:4]), 16)
     header['data'] = data[0:header['length']]    
     return (header, data[header['length']:])
