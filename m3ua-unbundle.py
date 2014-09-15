@@ -59,15 +59,22 @@ def remove_extra(chunk):
     fields = chunk.split(' ')[2:18]
     return ' '.join(fields)
 
-def handle_packet(text2pcap_process, current_time, data):
+def handle_packet(text2pcap_process, current_time, data, sll):
     ''' handle packet '''
     data = data.split(' ')
     
-    (ethernet_header, data) = extract_ethernet(data)
-    if ethernet_header['ip.type'] <> ['08', '00']:
-        # raise RuntimeError('Unknown IP type: %s' % ethernet_header['ip.type'])
-        # return data
-        return 
+    if sll:
+        (sll_header, data) = extract_sll(data)
+        if sll_header['sll.etype'] <> ['08', '00']:
+            # raise RuntimeError('Unknown IP type: %s' % ethernet_header['ip.type'])
+            # return data
+            return data
+    else:
+        (ethernet_header, data) = extract_ethernet(data)
+        if ethernet_header['ip.type'] <> ['08', '00']:
+            # raise RuntimeError('Unknown IP type: %s' % ethernet_header['ip.type'])
+            # return data
+            return
     
     (ipv4_header, data) = extract_ipv4(data)
     if ipv4_header['protocol'] <> PROTOCOLS['SCTP']:
@@ -88,6 +95,31 @@ def extract_ethernet(data):
     header['mac.source'] = data[6:12]
     header['ip.type'] = data[12:14]
     return (header, data[14:])
+
+def extract_sll(data):
+    ''' extract linux cooked capture header '''
+
+    #/*
+    # * A DLT_LINUX_SLL fake link-layer header.
+    # */
+    ##define SLL_HDR_LEN 16      /* total header length */
+    ##define SLL_ADDRLEN 8       /* length of address field */
+    #
+    #struct sll_header {
+    #    u_int16_t sll_pkttype;      /* packet type */
+    #    u_int16_t sll_hatype;       /* link-layer address type */
+    #    u_int16_t sll_halen;        /* link-layer address length */
+    #    u_int8_t sll_addr[SLL_ADDRLEN]; /* link-layer address */
+    #    u_int16_t sll_protocol;     /* protocol */
+    #};
+
+    header = dict()
+    header['sll.pkttype'] = data[0:2]
+    header['sll.hatype'] = data[2:4]
+    halen = header['sll.halen'] = data[4:6]
+    header['sll.src.eth'] = data[6: 6 + int(halen[0] + halen[1], 16)]
+    header['sll.etype'] = data[14:16]
+    return (header, data[16:])
 
 def extract_ipv4(data):
     ''' extract ipv4 header data '''  
@@ -237,7 +269,7 @@ def save_data(process, current_time, data):
         row_id += 16
     process.stdin.write('\n')
 
-def unbundling(tshark_process, text2pcap_process):
+def unbundling(tshark_process, text2pcap_process, sll):
     ''' m3ua unbundling process '''
     
     current_time = '00:00:00.0000'
@@ -266,7 +298,7 @@ def unbundling(tshark_process, text2pcap_process):
                 #payload = handle_packet(filtered_block)
                 #if payload:
                 #    save_data(text2pcap_process, current_time, payload)
-                handle_packet(text2pcap_process, current_time, filtered_block)
+                handle_packet(text2pcap_process, current_time, filtered_block, sll)
             else:
                 try:
                     curr_time_str = ' '.join(data_block).strip()
@@ -287,6 +319,7 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='m3ua unbundle')
     parser.add_argument('--filter', action='store', help='wireshark filter')
+    parser.add_argument('-s', '--sll', action='store_true', help='Linux cooked-mode capture (SLL)')
     parser.add_argument('source', action='store', help='source pcap file')
     parser.add_argument('result', action='store', help='result pcap file')
     args = parser.parse_args()
@@ -304,7 +337,7 @@ if __name__ == '__main__':
                                         stdin=subprocess.PIPE)    
     
     try:
-        unbundling(tshark_process, text2pcap_process)
+        unbundling(tshark_process, text2pcap_process, args.sll)
     except KeyboardInterrupt:
         print 'Interrupted by user'
         sys.exit()
