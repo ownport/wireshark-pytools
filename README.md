@@ -23,3 +23,6 @@ That's all.
 As for Ubuntu, you need to have installed python http://www.python.org and wireshark http://www.wireshark.org. During wireshark installation be sure that tshak and text2pcap tools are marked for installation. When python and wireshark are installed, in command line (console) you need to check that path to wireshark directory where are located tshark.exe and text2pcap.exe files is specified in system environment variable %PATH%. 
 
 
+## Contributors
+
+- [Vasil Velichkov](https://github.com/velichkov)
