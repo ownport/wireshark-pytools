@@ -29,6 +29,7 @@ POSSIBILITY OF SUCH DAMAGE."""
 
 import sys
 import math
+import re
 
 PROTOCOLS = {
     'SCTP': 132,
@@ -272,7 +273,8 @@ def save_data(process, current_time, data):
 def unbundling(tshark_process, text2pcap_process, sll):
     ''' m3ua unbundling process '''
     
-    current_time = '00:00:00.0000'
+    current_time = ''
+    timestamp_pattern = re.compile(r'\b(\d+\.\d+)\b')
     data_block = list()
        
     while tshark_process.poll() is None:
@@ -299,17 +301,11 @@ def unbundling(tshark_process, text2pcap_process, sll):
                 #if payload:
                 #    save_data(text2pcap_process, current_time, payload)
                 handle_packet(text2pcap_process, current_time, filtered_block, sll)
-            else:
-                try:
-                    curr_time_str = ' '.join(data_block).strip()
-                    curr_time_str_split = [f for f in curr_time_str.split(' ') if f]
-                    secs, msecs = map(int, curr_time_str_split[1].split('.'))
-                    hours = secs / 3600
-                    mins = (secs - hours * 3600) / 60
-                    secs = (secs - hours * 3600 - mins * 60)
-                    current_time = "%02d:%02d:%02d.%06d" % (hours, mins, secs, msecs)
-                except:
-                    pass
+            elif len(data_block) == 1:
+                timestamp = timestamp_pattern.search(data_block[0])
+                if timestamp:
+                    current_time = timestamp.group(0)
+
             data_block = list()
     
 if __name__ == '__main__':
@@ -325,14 +321,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # tshark
-    tshark_args = ['tshark', '-x', '-r', args.source]
+    tshark_args = ['tshark', '-x', '-te', '-r', args.source]
     if args.filter:
         tshark_args.append(args.filter)
     tshark_process = subprocess.Popen(  tshark_args, 
                                         stdout=subprocess.PIPE)    
 
     # text2pcap
-    text2pcap_args = ['text2pcap', '-l141', '-t', '%H:%M:%S.', '-', args.result]
+    text2pcap_args = ['text2pcap', '-l141', '-t', '%s.', '-', args.result]
     text2pcap_process = subprocess.Popen(text2pcap_args, 
                                         stdin=subprocess.PIPE)    
     
