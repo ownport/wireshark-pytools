@@ -53,8 +53,6 @@ SCTP_CHUNK_TYPES = {
     'SHUTDOWN': 14,
 }
 
-args = None
-
 def remove_extra(chunk):
     ''' remove extra symbols '''
     
