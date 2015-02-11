@@ -29,6 +29,7 @@ POSSIBILITY OF SUCH DAMAGE."""
 
 import sys
 import math
+import re
 
 PROTOCOLS = {
     'SCTP': 132,
@@ -52,6 +53,8 @@ SCTP_CHUNK_TYPES = {
     'SHUTDOWN': 14,
 }
 
+args = None
+
 def remove_extra(chunk):
     ''' remove extra symbols '''
     
@@ -59,11 +62,11 @@ def remove_extra(chunk):
     fields = chunk.split(' ')[2:18]
     return ' '.join(fields)
 
-def handle_packet(text2pcap_process, current_time, data, sll):
+def handle_packet(text2pcap_process, current_time, data, args):
     ''' handle packet '''
     data = data.split(' ')
     
-    if sll:
+    if args['sll']:
         (sll_header, data) = extract_sll(data)
         if sll_header['sll.etype'] <> ['08', '00']:
             # raise RuntimeError('Unknown IP type: %s' % ethernet_header['ip.type'])
@@ -84,7 +87,7 @@ def handle_packet(text2pcap_process, current_time, data, sll):
         
     # (sctp_data, data) = extract_sctp(data)
     # return data
-    extract_sctp(text2pcap_process, current_time, data)
+    extract_sctp(text2pcap_process, current_time, data, args)
     return
 
 def extract_ethernet(data):
@@ -136,7 +139,7 @@ def extract_ipv4(data):
     header['protocol'] = int(data[9], 16)
     return (header, data[header['length']:])
 
-def extract_sctp(text2pcap_process, current_time, data):
+def extract_sctp(text2pcap_process, current_time, data, args):
     ''' extact sctp header data '''
     
     header = dict()
@@ -160,7 +163,11 @@ def extract_sctp(text2pcap_process, current_time, data):
                     continue
                 payload = sctp_chunk['data'][16:sctp_chunk['length']]
                 m3ua_hdr, payload = m3ua_header(payload)
-                mtp3_hdr = m3ua_to_mtp3(m3ua_hdr)
+                mtp3_hdr = None
+                if args['ansi']:
+                    mtp3_hdr = m3ua_to_ansi_mtp3(m3ua_hdr)
+                else:
+                    mtp3_hdr = m3ua_to_mtp3(m3ua_hdr)
                 if not mtp3_hdr:
                     continue
                 if 'protocol.padding' in m3ua_hdr:
@@ -257,6 +264,23 @@ def m3ua_to_mtp3(m3ua_header):
         return None
     return mtp3_header
 
+def m3ua_to_ansi_mtp3(m3ua_header):
+    mtp3_header = list()
+    # Service information octet
+    try:
+        sio = '%02x' % ((m3ua_header['protocol.ni'] << 6) + m3ua_header['protocol.si'])
+        mtp3_header.append(sio)
+        routing_label = (m3ua_header['protocol.sls'] << 48) + \
+                        (m3ua_header['protocol.opc'] << 24) + \
+                        m3ua_header['protocol.dpc']
+        routing_label = '%014x' % routing_label
+        routing_label = [routing_label[i:i+2] for i in range(0, len(routing_label), 2)]
+        routing_label.reverse()
+        mtp3_header.extend(routing_label)
+    except KeyError:
+        return None
+    return mtp3_header
+
 def save_data(process, current_time, data):
     ''' save data block to process '''
 
@@ -269,10 +293,11 @@ def save_data(process, current_time, data):
         row_id += 16
     process.stdin.write('\n')
 
-def unbundling(tshark_process, text2pcap_process, sll):
+def unbundling(tshark_process, text2pcap_process, args):
     ''' m3ua unbundling process '''
     
-    current_time = '00:00:00.0000'
+    current_time = ''
+    timestamp_pattern = re.compile(r'\b(\d+\.\d+)\b')
     data_block = list()
        
     while tshark_process.poll() is None:
@@ -298,18 +323,12 @@ def unbundling(tshark_process, text2pcap_process, sll):
                 #payload = handle_packet(filtered_block)
                 #if payload:
                 #    save_data(text2pcap_process, current_time, payload)
-                handle_packet(text2pcap_process, current_time, filtered_block, sll)
-            else:
-                try:
-                    curr_time_str = ' '.join(data_block).strip()
-                    curr_time_str_split = [f for f in curr_time_str.split(' ') if f]
-                    secs, msecs = map(int, curr_time_str_split[1].split('.'))
-                    hours = secs / 3600
-                    mins = (secs - hours * 3600) / 60
-                    secs = (secs - hours * 3600 - mins * 60)
-                    current_time = "%02d:%02d:%02d.%06d" % (hours, mins, secs, msecs)
-                except:
-                    pass
+                handle_packet(text2pcap_process, current_time, filtered_block, args)
+            elif len(data_block) == 1:
+                timestamp = timestamp_pattern.search(data_block[0])
+                if timestamp:
+                    current_time = timestamp.group(0)
+
             data_block = list()
     
 if __name__ == '__main__':
@@ -320,25 +339,27 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='m3ua unbundle')
     parser.add_argument('--filter', action='store', help='wireshark filter')
     parser.add_argument('-s', '--sll', action='store_true', help='Linux cooked-mode capture (SLL)')
+    parser.add_argument('-a', '--ansi', action='store_true', help='ANSI MTP3')
     parser.add_argument('source', action='store', help='source pcap file')
     parser.add_argument('result', action='store', help='result pcap file')
     args = parser.parse_args()
     
     # tshark
-    tshark_args = ['tshark', '-x', '-r', args.source]
+    tshark_args = ['tshark', '-x', '-te', '-r', args.source]
     if args.filter:
         tshark_args.append(args.filter)
     tshark_process = subprocess.Popen(  tshark_args, 
                                         stdout=subprocess.PIPE)    
 
     # text2pcap
-    text2pcap_args = ['text2pcap', '-l141', '-t', '%H:%M:%S.', '-', args.result]
+    text2pcap_args = ['text2pcap', '-l141', '-t', '%s.', '-', args.result]
     text2pcap_process = subprocess.Popen(text2pcap_args, 
                                         stdin=subprocess.PIPE)    
     
     try:
-        unbundling(tshark_process, text2pcap_process, args.sll)
+        unbundling(tshark_process, text2pcap_process, {'sll': args.sll, 'ansi': args.ansi})
     except KeyboardInterrupt:
         print 'Interrupted by user'
         sys.exit()
 
+# vi: set ts=4 sw=4 sts=4 expandtab:
