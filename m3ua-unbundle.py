@@ -226,6 +226,7 @@ def m3ua_header(data):
 
     # handle tags
     data = data[8:]
+    pdata = []
     while True:
         try:
             tag = data[0:2]
@@ -237,13 +238,14 @@ def m3ua_header(data):
             elif tag == ['02','10']:
                 (protocol_hdr, data) = protocol(data[2:])
                 header.update(protocol_hdr)
+                pdata = data
             else:
                 break
         except ValueError:
             break
         except IndexError:
             break
-    return (header, data)
+    return (header, pdata)
 
 def m3ua_to_mtp3(m3ua_header):
     mtp3_header = list()
